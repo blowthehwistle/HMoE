@@ -1,0 +1,9 @@
+[flake8]
+max-line-length = 128
+exclude =
+    .ipynb_checkpoints
+    3rdparty
+    torchtitan
+ignore = 
+    F824
+    W503
