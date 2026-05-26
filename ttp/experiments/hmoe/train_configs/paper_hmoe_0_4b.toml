@@ -1,8 +1,17 @@
-# torchtitan debug
+# Paper-style HMoE-0.4B configuration.
+#
+# Architecture follows the EMNLP appendix: 12 Transformer blocks, 8
+# heterogeneous experts, Top-K k=2, and aggregate expert hidden dimension
+# 12,288 with arithmetic expert sizes.
+#
+# Note: the paper used a LLaMA2 tokenizer with a 32k vocabulary. This repo
+# currently ships DeepSeek tokenizer assets, so this runnable config keeps
+# vocab_size=106496. For a closer paper parameter count, use a LLaMA2 tokenizer
+# and set vocab_size to 32768, which satisfies this repo's 8192 padding check.
 
 [job]
 dump_folder = "./outputs"
-description = "HMoE debug training"
+description = "Paper-style HMoE-0.4B training"
 print_args = true
 use_for_integration_test = false
 
@@ -26,59 +35,53 @@ enable_wandb = false
 
 [model]
 name = "hmoe"
-flavor = "debugmodel"
+flavor = "paper_hmoe_0_4b"
 ssm_cp_version = 1
-# test tokenizer.model, for debug purpose only
 tokenizer_path = "./assets/hf/deepseek-moe-16b-base"
-vocab_size = 106496 # original: 102400
+vocab_size = 106496
 eos_id = 100001
-# converters = ["float8"]
 
 [optimizer]
 name = "AdamW"
-lr = 8e-4
+lr = 1e-4
 eps = 1e-8
+weight_decay = 1e-5
 
 [lr_scheduler]
-warmup_steps = 100  # lr scheduler warm up, normally 20% of the train steps
-decay_ratio = 0.8  # lr scheduler decay ratio, 80% of the train steps
+warmup_steps = 1000
+decay_ratio = 1.0
 decay_type = "linear"
-lr_min_factor = 0.0
+lr_min_factor = 1.0
 
 [training]
-local_batch_size = 4
-global_batch_size = -1
-seq_len = 2048
-max_norm = 1.0  # grad norm clipping
-steps = 1000
+local_batch_size = 1
+global_batch_size = 640
+seq_len = 4096
+max_norm = 1.0
+steps = 40000
 dataset_type = "hf"
 dataset = "c4_test"
 dataset_path = "3rdparty/torchtitan/tests/assets/c4_test"
 loss_function_type = "fused_cross_entropy"
-seed = 1234
+seed = 12345
 mtp_loss_weights = [1.0, 0.3]
-# loss_mask_token_ids = [
-#     120002,  # pad
-# ]
-# rope_theta = None
 
 [compile]
 enable = true
 
 [inference]
-# checkpoint_path = None
 load_model_weights_only = true
 mixed_precision_param = "bfloat16"
 mixed_precision_reduce = "bfloat16"
 use_inference_caches = true
 enable_cpu_offload = false
 enable_kvcache_cpu_offload = false
-fsdp_reshard_after_forward = "default" # default / never / always
+fsdp_reshard_after_forward = "default"
 
 [parallelism]
 data_parallel_replicate_degree = 1
 data_parallel_shard_degree = -1
-fsdp_reshard_after_forward = "default" # default / never / always
+fsdp_reshard_after_forward = "default"
 tensor_parallel_degree = 1
 enable_async_tensor_parallel = false
 pipeline_parallel_degree = 1
@@ -87,18 +90,17 @@ context_parallel_degree = 1
 disable_loss_parallel = true
 
 [checkpoint]
-enable_checkpoint = false
-folder = "checkpoint"  # make sure is a shared folder
-interval = 100
-last_save_model_only = false # deprecated, last step will still save all
+enable_checkpoint = true
+folder = "checkpoint"
+interval = 1000
+last_save_model_only = false
 export_dtype = "float32"
-async_mode = "async"  # ["disabled", "async", "async_with_pinned_mem"]
-# initial_load_path = "/path/to/pretrained/checkpoint/step-x"
-initial_load_model_only = false # true is only used for loading models trained by previous versions of the titan framework
+async_mode = "async"
+initial_load_model_only = false
 
 [activation_checkpoint]
-mode = "full"  # ["none", "selective", "full"]
-selective_ac_option = '2'  # 'int' = ac every positive int layer or 'op', ac based on ops policy
+mode = "full"
+selective_ac_option = "2"
 
 [float8]
 enable_fsdp_float8_all_gather = false

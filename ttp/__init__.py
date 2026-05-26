@@ -1,3 +1,5 @@
+import logging
+import os
 import torch
 from ttp.patches import run_patches
 
@@ -6,9 +8,12 @@ _COMPATIBLE_TORCH_VERSIONS = [
 ]
 
 if torch.__version__ not in _COMPATIBLE_TORCH_VERSIONS:
-    raise ValueError(
+    message = (
         f"Compatible torch versions: {_COMPATIBLE_TORCH_VERSIONS}, "
-        f"current torch verison is {torch.__version__}."
+        f"current torch version is {torch.__version__}."
     )
+    if os.environ.get("TTP_STRICT_TORCH_VERSION") == "1":
+        raise ValueError(message)
+    logging.getLogger(__name__).warning(message)
 
 run_patches()  # do patch first

@@ -6,3 +6,35 @@
 __pycache__
 */__pycache__
 */**/__pycache__
+
+# Local datasets and downloaded caches
+fineweb_10BT/
+data/
+datasets/
+.cache/
+**/.cache/
+
+# Training outputs, checkpoints, and profiling artifacts
+outputs/
+outputs_mohge/
+checkpoint/
+checkpoints/
+profile_trace/
+memory_snapshot/
+comm_traces/
+tb/
+wandb/
+*.distcp
+*.pt
+*.pth
+*.safetensors
+
+# Large profiler traces / generated artifacts
+*_trace.json
+*.nsys-rep
+*.qdrep
+*.sqlite
+
+# Logs
+*.log
+logs/

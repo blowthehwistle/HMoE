@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.profiler import record_function
 from torchtitan.models.attention import build_attention, init_attention_mask
 from torchtitan.protocols.train_spec import ModelProtocol
 from torchtitan.tools.logging import logger
@@ -350,7 +351,14 @@ class Hybrid(nn.Module, ModelProtocol):
             cache_params = [None] * len(self.layers)
 
         for i, (layer, cache) in enumerate(zip(self.layers.values(), cache_params)):
-            h = layer(h, self.freqs_cis, seq_idx, cache)
+            if getattr(layer, "moe_enabled", False):
+                label = f"hmoe_moe_block/layer_{i}"
+            elif getattr(layer, "attention", None) is not None:
+                label = f"hmoe_attention_block/layer_{i}"
+            else:
+                label = f"hmoe_ffn_block/layer_{i}"
+            with record_function(label):
+                h = layer(h, self.freqs_cis, seq_idx, cache)
 
         h = self.norm(h) if self.norm else h
         if return_hidden_states:

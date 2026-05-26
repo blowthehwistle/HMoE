@@ -1,7 +1,14 @@
 import inspect
+import logging
 import torch.multiprocessing as mp
-from rod.logging import get_logger
 from einops._torch_specific import allow_ops_in_compiled_graph
+
+
+try:
+    from rod.logging import get_logger
+except ImportError:
+    def get_logger(name: str) -> logging.Logger:
+        return logging.getLogger(name)
 
 
 mp.set_start_method('spawn', force=True)

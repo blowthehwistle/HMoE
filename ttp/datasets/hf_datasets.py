@@ -4,13 +4,24 @@ from torchtitan.datasets.hf_datasets import DATASETS, DatasetConfig
 from typing import Any, Dict
 
 
+def _parse_data_files(dataset_path: str):
+    if "," not in dataset_path:
+        return dataset_path
+    return [path.strip() for path in dataset_path.split(",") if path.strip()]
+
+
 def _load_hf_dataset(dataset_path: str):
     return load_dataset(dataset_path, split='train', streaming=True)
 
 
 def _load_json_dataset(dataset_path: str):
     """Load json dataset with default configuration."""
-    return load_dataset('json', data_files=dataset_path, streaming=True, split='train')
+    return load_dataset('json', data_files=_parse_data_files(dataset_path), streaming=True, split='train')
+
+
+def _load_parquet_dataset(dataset_path: str):
+    """Load local parquet shards with default configuration."""
+    return load_dataset('parquet', data_files=_parse_data_files(dataset_path), streaming=True, split='train')
 
 
 def _process_hf_text(sample: Dict[str, Any]) -> str:
@@ -53,6 +64,11 @@ def update_datasets():
         "json": DatasetConfig(
             path=None,
             loader=_load_json_dataset,
+            text_processor=_process_hf_text,
+        ),
+        "parquet": DatasetConfig(
+            path=None,
+            loader=_load_parquet_dataset,
             text_processor=_process_hf_text,
         ),
         "banche": DatasetConfig(

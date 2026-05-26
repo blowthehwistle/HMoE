@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from typing import List
+from torch.profiler import record_function
 
 from torchtitan.models.moe import TokenReorderer, FeedForward
 from ttp.experiments.hmoe.model.moe import TokenChoiceTopKRouter
@@ -57,37 +58,42 @@ class HeterogeneousGroupedExperts(nn.Module):
 
         all_outputs = []
 
-        for group_idx in range(self.num_expert_groups):
-            group_params = self.group_params[group_idx]
+        with record_function("hmoe_grouped_experts"):
+            for group_idx in range(self.num_expert_groups):
+                group_params = self.group_params[group_idx]
+                hidden_dim = self.expert_hidden_dims[group_idx]
 
-            start_expert = group_idx * self.num_experts_per_group
-            end_expert = start_expert + self.num_experts_per_group
+                start_expert = group_idx * self.num_experts_per_group
+                end_expert = start_expert + self.num_experts_per_group
 
-            group_x_splits = []
-            group_num_tokens_per_expert = []
+                group_x_splits = []
+                group_num_tokens_per_expert = []
 
-            for expert_idx in range(start_expert, end_expert):
-                if expert_idx < len(x_splits):
-                    group_x_splits.append(x_splits[expert_idx])
-                    group_num_tokens_per_expert.append(num_tokens_per_expert[expert_idx].item())
-                else:
-                    group_x_splits.append(torch.empty(0, x.shape[1], dtype=x.dtype, device=x.device))
-                    group_num_tokens_per_expert.append(0)
+                for expert_idx in range(start_expert, end_expert):
+                    if expert_idx < len(x_splits):
+                        group_x_splits.append(x_splits[expert_idx])
+                        group_num_tokens_per_expert.append(num_tokens_per_expert[expert_idx].item())
+                    else:
+                        group_x_splits.append(torch.empty(0, x.shape[1], dtype=x.dtype, device=x.device))
+                        group_num_tokens_per_expert.append(0)
 
-            group_x = torch.cat(group_x_splits, dim=0)
+                group_x = torch.cat(group_x_splits, dim=0)
+                total_group_tokens = int(sum(group_num_tokens_per_expert))
 
-            group_num_tokens_tensor = torch.tensor(group_num_tokens_per_expert, dtype=torch.int32, device=x.device)
-            offsets = torch.cumsum(group_num_tokens_tensor, dim=0, dtype=torch.int32)
+                group_num_tokens_tensor = torch.tensor(group_num_tokens_per_expert, dtype=torch.int32, device=x.device)
+                offsets = torch.cumsum(group_num_tokens_tensor, dim=0, dtype=torch.int32)
 
-            h = F.silu(
-                torch._grouped_mm(group_x.bfloat16(), group_params.w1.bfloat16().transpose(-2, -1), offs=offsets)
-            )
-            h = h * torch._grouped_mm(
-                group_x.bfloat16(), group_params.w3.bfloat16().transpose(-2, -1), offs=offsets
-            )
-            group_out = torch._grouped_mm(h, group_params.w2.bfloat16().transpose(-2, -1), offs=offsets).type_as(group_x)
+                label = f"hmoe_grouped_mm/group_{group_idx}/hidden_{hidden_dim}/tokens_{total_group_tokens}"
+                with record_function(label):
+                    h = F.silu(
+                        torch._grouped_mm(group_x.bfloat16(), group_params.w1.bfloat16().transpose(-2, -1), offs=offsets)
+                    )
+                    h = h * torch._grouped_mm(
+                        group_x.bfloat16(), group_params.w3.bfloat16().transpose(-2, -1), offs=offsets
+                    )
+                    group_out = torch._grouped_mm(h, group_params.w2.bfloat16().transpose(-2, -1), offs=offsets).type_as(group_x)
 
-            all_outputs.append(group_out)
+                all_outputs.append(group_out)
 
         if all_outputs:
             return torch.cat(all_outputs, dim=0)

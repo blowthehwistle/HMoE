@@ -2,6 +2,7 @@ from torchtitan.protocols.train_spec import TrainSpec, register_train_spec
 from torchtitan.components.lr_scheduler import build_lr_schedulers
 from torchtitan.models.llama3.infra.pipeline import pipeline_llama
 from torchtitan.components.optimizer import build_optimizers
+from torchtitan.components.validate import build_validator
 from ttp.datasets.dataloader import build_dataloader
 from ttp.components.loss import build_loss
 from ttp.components.metrics import build_ttp_metrics_processor
@@ -43,6 +44,66 @@ hybrid_hmoe_configs = {
         num_experts_per_group=32,
         expert_hidden_dims=[512, 672, 896, 1024]
     ),
+    # Paper-style HMoE-0.4B architecture from the EMNLP appendix:
+    # 12 transformer blocks, 8 heterogeneous experts, Top-K k=2, and
+    # aggregate expert hidden dimension 12,288 with arithmetic expert sizes.
+    "paper_hmoe_0_4b": HybridModelArgs(
+        dim=768,
+        n_heads=12,
+        n_kv_heads=12,
+        head_dim=64,
+        multiple_of=8,
+        norm_eps=1e-6,
+        use_flex_attn=False,
+        attn_mask_type="causal",
+        eos_id=0,
+        qk_norm=True,
+        qk_norm_after_rope=False,
+        hybrid_config="ae" * 12,
+        expert_hidden_dim=1536,
+        num_experts=8,
+        num_shared_experts=0,
+        top_k=2,
+        use_grouped_mm=True,
+        max_seq_len=4096,
+        aux_load_balance_loss_coeff=None,
+        p_penalty_coeff=0.1,
+        initializer_range=0.02,
+        use_heterogeneous_moe=True,
+        num_expert_groups=8,
+        num_experts_per_group=1,
+        expert_hidden_dims=[864, 1056, 1248, 1440, 1632, 1824, 2016, 2208],
+    ),
+    # Paper-style HMoE-3B architecture from the EMNLP appendix:
+    # 12 transformer blocks, 8 heterogeneous experts, Top-K k=2, and
+    # aggregate expert hidden dimension 32,768 with arithmetic expert sizes.
+    "paper_hmoe_3b": HybridModelArgs(
+        dim=2048,
+        n_heads=16,
+        n_kv_heads=16,
+        head_dim=128,
+        multiple_of=8,
+        norm_eps=1e-6,
+        use_flex_attn=False,
+        attn_mask_type="causal",
+        eos_id=0,
+        qk_norm=True,
+        qk_norm_after_rope=False,
+        hybrid_config="ae" * 12,
+        expert_hidden_dim=4096,
+        num_experts=8,
+        num_shared_experts=0,
+        top_k=2,
+        use_grouped_mm=True,
+        max_seq_len=4096,
+        aux_load_balance_loss_coeff=None,
+        p_penalty_coeff=0.1,
+        initializer_range=0.02,
+        use_heterogeneous_moe=True,
+        num_expert_groups=8,
+        num_experts_per_group=1,
+        expert_hidden_dims=[2304, 2816, 3328, 3840, 4352, 4864, 5376, 5888],
+    ),
 }
 
 register_train_spec(
@@ -57,6 +118,7 @@ register_train_spec(
         build_dataloader_fn=build_dataloader,
         build_tokenizer_fn=build_tokenizer,
         build_loss_fn=build_loss,
+        build_validator_fn=build_validator,
         build_metrics_processor_fn=build_ttp_metrics_processor
     )
 )
