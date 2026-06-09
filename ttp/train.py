@@ -9,6 +9,7 @@ from torchtitan.distributed import utils as dist_utils
 from ttp.patches import register_models, as_patch
 from ttp.config.job_config import TTPJobConfig
 from ttp.components.metrics import push_extra_metrics, MetricsAvgAccumulatorHook
+from ttp.utils.nvtx import nvtx_range
 
 
 _lm_loss_hook = MetricsAvgAccumulatorHook(need_accum=False)
@@ -84,18 +85,21 @@ class TTPTrainer(Trainer):
             with self.train_context(optional_context_parallel_ctx):
                 assert len(model_parts) == 1
                 with self.maybe_enable_amp:
-                    pred = model_parts[0](inputs, eos_id=self.tokenizer.eos_id)
-                    loss = self.loss_fn(pred, labels)
+                    with nvtx_range("train/forward"):
+                        pred = model_parts[0](inputs, eos_id=self.tokenizer.eos_id)
+                    with nvtx_range("train/loss"):
+                        loss = self.loss_fn(pred, labels)
 
-                    # NOTE: Add auxiliary MoE load-balancing loss from all MoE layers, if enabled
-                    loss = self._apply_aux_loss(model_parts, loss)
+                        # NOTE: Add auxiliary MoE load-balancing loss from all MoE layers, if enabled
+                        loss = self._apply_aux_loss(model_parts, loss)
 
-                    # NOTE: Record MoE imbalance statistics to tensorboard
-                    self._record_moe_imbalance(model_parts)
+                        # NOTE: Record MoE imbalance statistics to tensorboard
+                        self._record_moe_imbalance(model_parts)
 
                 # need to free to before bwd to avoid peaking memory
                 del pred
-                loss.backward()
+                with nvtx_range("train/backward"):
+                    loss.backward()
 
         return loss
 

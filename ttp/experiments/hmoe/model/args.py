@@ -1,4 +1,5 @@
 from torch import nn
+import math
 from torchtitan.protocols.train_spec import BaseModelArgs
 from torchtitan.tools.logging import logger
 from ttp.config.job_config import TTPJobConfig
@@ -106,9 +107,59 @@ class HybridModelArgs(BaseModelArgs):
                 "We are still working on this."
             )
 
+    def _estimate_active_params(self, model: nn.Module) -> int:
+        """Estimate Top-K active parameters for sparse HMoE/MoE training FLOPs."""
+        nparams = sum(p.numel() for p in model.parameters())
+        sparse_param_names = [
+            name
+            for name, _ in model.named_parameters()
+            if ".moe.experts." in name or ".moe.shared_experts." in name
+        ]
+        dense_and_router_params = sum(
+            p.numel()
+            for name, p in model.named_parameters()
+            if name not in sparse_param_names
+        )
+
+        if not self.hybrid_patterns:
+            return nparams
+
+        num_moe_layers = sum(1 for pattern in self.hybrid_patterns if pattern == "e")
+        if num_moe_layers == 0:
+            return nparams
+
+        shared_expert_params = 0
+        if self.num_shared_experts > 0:
+            if self.shared_expert_hidden_dim is None:
+                if self.use_heterogeneous_moe and self.expert_hidden_dims:
+                    avg_hidden_dim = sum(self.expert_hidden_dims) / len(self.expert_hidden_dims)
+                    shared_hidden_dim = int(avg_hidden_dim) * self.num_shared_experts
+                else:
+                    shared_hidden_dim = self.expert_hidden_dim * self.num_shared_experts
+            else:
+                shared_hidden_dim = self.shared_expert_hidden_dim * self.num_shared_experts
+            shared_expert_params = 3 * self.dim * shared_hidden_dim * num_moe_layers
+
+        if self.use_heterogeneous_moe and self.expert_hidden_dims:
+            expert_hidden_total = sum(self.expert_hidden_dims) * self.num_experts_per_group
+            num_experts = self.num_expert_groups * self.num_experts_per_group
+            avg_expert_hidden = expert_hidden_total / num_experts
+            active_expert_params_per_layer = self.top_k * 3 * self.dim * avg_expert_hidden
+        else:
+            active_expert_params_per_layer = self.top_k * 3 * self.dim * self.expert_hidden_dim
+
+        active_sparse_params = int(math.ceil(active_expert_params_per_layer * num_moe_layers))
+        return dense_and_router_params + shared_expert_params + active_sparse_params
+
     def get_nparams_and_flops(self, model: nn.Module, seq_len: int) -> tuple[int, int]:
         nparams = sum(p.numel() for p in model.parameters())
+        active_params = self._estimate_active_params(model)
+        flops_per_token = 6 * active_params
 
-        # TODO: add flops calculation
+        logger.info(
+            "Estimated active parameters for sparse training FLOPs: "
+            f"{active_params:,}; num_flops_per_token={flops_per_token:,}. "
+            "This is a Top-K static estimate; report measured routing-adjusted FLOPs separately."
+        )
 
-        return nparams, None
+        return nparams, flops_per_token

@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from torchtitan.models.moe import GroupedExperts, TokenReorderer, FeedForward
+from ttp.utils.nvtx import nvtx_range
 from .args import HybridModelArgs
 
 
@@ -148,43 +149,48 @@ class MoE(nn.Module):
         bs, slen, dim = x.shape
         x = x.view(-1, dim)
 
-        (
-            top_scores,
-            selected_experts_indices,
-            num_tokens_per_expert,
-            importance_per_expert,
-        ) = self.router(x, self.expert_bias)
+        with nvtx_range("moe/router"):
+            (
+                top_scores,
+                selected_experts_indices,
+                num_tokens_per_expert,
+                importance_per_expert,
+            ) = self.router(x, self.expert_bias)
 
         with torch.no_grad():
             self.tokens_per_expert.add_(num_tokens_per_expert)
 
-        (
-            top_scores_experts_sorted,
-            token_indices_experts_sorted,
-            num_tokens_per_expert,
-        ) = self.reorderer(top_scores, selected_experts_indices)
+        with nvtx_range("moe/reorder"):
+            (
+                top_scores_experts_sorted,
+                token_indices_experts_sorted,
+                num_tokens_per_expert,
+            ) = self.reorderer(top_scores, selected_experts_indices)
 
-        token_indices_experts_sorted = token_indices_experts_sorted.reshape(
-            -1, 1
-        ).expand(-1, dim)
+        with nvtx_range("moe/dispatch_gather"):
+            token_indices_experts_sorted = token_indices_experts_sorted.reshape(
+                -1, 1
+            ).expand(-1, dim)
 
-        routed_input = torch.gather(x, dim=0, index=token_indices_experts_sorted)
+            routed_input = torch.gather(x, dim=0, index=token_indices_experts_sorted)
 
-        routed_output = self.experts(routed_input, num_tokens_per_expert)
+        with nvtx_range("moe/experts"):
+            routed_output = self.experts(routed_input, num_tokens_per_expert)
 
-        routed_output = (
-            routed_output.to(torch.float32)
-            * top_scores_experts_sorted.reshape(-1, 1)
-        ).to(x.dtype)
+        with nvtx_range("moe/combine_scatter"):
+            routed_output = (
+                routed_output.to(torch.float32)
+                * top_scores_experts_sorted.reshape(-1, 1)
+            ).to(x.dtype)
 
-        if self.shared_experts is not None:
-            out = self.shared_experts(x)
-        else:
-            out = torch.zeros_like(x.reshape(bs * slen, dim))
+            if self.shared_experts is not None:
+                out = self.shared_experts(x)
+            else:
+                out = torch.zeros_like(x.reshape(bs * slen, dim))
 
-        out = out.scatter_add(
-            dim=0, index=token_indices_experts_sorted, src=routed_output
-        )
+            out = out.scatter_add(
+                dim=0, index=token_indices_experts_sorted, src=routed_output
+            )
         out = out.reshape(bs, slen, dim)
 
         num_tokens = bs * slen

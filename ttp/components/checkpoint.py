@@ -59,6 +59,9 @@ class CheckpointManager(torchtitan.components.checkpoint.CheckpointManager):
         # won't affect preemption and training resume. We also only allow dtype
         # conversion when we are checkpointing model only and the current dtype
         # is not the same as the export dtype at the end of the training.
+        if os.environ.get("TTP_SKIP_FINAL_CHECKPOINT") == "1":
+            logger.info(f"Skipping the final checkpoint at step {curr_step}.")
+            return
 
         logger.info(f"Saving a full checkpoint at last step, step {curr_step}.")
         states = self._flattened_model_states_sd()

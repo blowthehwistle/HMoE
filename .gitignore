@@ -9,10 +9,14 @@ __pycache__
 
 # Local datasets and downloaded caches
 fineweb_10BT/
+redpajama_1T
 data/
 datasets/
 .cache/
 **/.cache/
+
+# Local tokenizer/model assets
+assets/hf/Llama-2-7b-hf/
 
 # Training outputs, checkpoints, and profiling artifacts
 outputs/

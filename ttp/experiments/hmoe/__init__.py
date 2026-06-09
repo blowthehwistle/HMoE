@@ -74,6 +74,33 @@ hybrid_hmoe_configs = {
         num_experts_per_group=1,
         expert_hidden_dims=[864, 1056, 1248, 1440, 1632, 1824, 2016, 2208],
     ),
+    # Paper-style homogeneous MoE-0.4B baseline for Table 1 comparison:
+    # same dense backbone as HMoE-0.4B, 8 equal-size experts, Top-K k=2,
+    # and load-balancing loss coefficient 1e-2 from the appendix.
+    "paper_moe_0_4b": HybridModelArgs(
+        dim=768,
+        n_heads=12,
+        n_kv_heads=12,
+        head_dim=64,
+        multiple_of=8,
+        norm_eps=1e-6,
+        use_flex_attn=False,
+        attn_mask_type="causal",
+        eos_id=0,
+        qk_norm=True,
+        qk_norm_after_rope=False,
+        hybrid_config="ae" * 12,
+        expert_hidden_dim=1536,
+        num_experts=8,
+        num_shared_experts=0,
+        top_k=2,
+        use_grouped_mm=True,
+        max_seq_len=4096,
+        aux_load_balance_loss_coeff=1e-2,
+        p_penalty_coeff=None,
+        initializer_range=0.02,
+        use_heterogeneous_moe=False,
+    ),
     # Paper-style HMoE-3B architecture from the EMNLP appendix:
     # 12 transformer blocks, 8 heterogeneous experts, Top-K k=2, and
     # aggregate expert hidden dimension 32,768 with arithmetic expert sizes.

@@ -70,6 +70,12 @@ class TTPMetricsProcessor(MetricsProcessor):
         tps = self.ntokens_since_last_log / (
             time_delta * self.parallel_dims.non_data_parallel_size
         )
+        if self.num_flops_per_token > 0:
+            tflops = self.num_flops_per_token * tps / 1e12
+            mfu = 100 * self.num_flops_per_token * tps / self.gpu_peak_flops
+        else:
+            tflops = None
+            mfu = None
 
         time_end_to_end = time_delta / self.job_config.metrics.log_freq
         time_data_loading = sum(self.data_loading_times) / len(self.data_loading_times)
@@ -92,6 +98,9 @@ class TTPMetricsProcessor(MetricsProcessor):
             "memory/num_alloc_retries": device_mem_stats.num_alloc_retries,
             "memory/num_ooms": device_mem_stats.num_ooms,
         }
+        if tflops is not None and mfu is not None:
+            metrics["estimated_tflops"] = tflops
+            metrics["estimated_mfu(%)"] = mfu
 
         if extra_metrics:
             metrics.update(extra_metrics)
@@ -105,7 +114,9 @@ class TTPMetricsProcessor(MetricsProcessor):
             f"{color.orange}grad_norm: {grad_norm:7.4f}  "
             f"{color.turquoise}memory: {device_mem_stats.max_reserved_gib:5.2f}GiB"
             f"({device_mem_stats.max_reserved_pct:.2f}%)  "
-            f"{color.blue}tps: {round(tps):,}{color.reset}"
+            f"{color.blue}tps: {round(tps):,}  "
+            f"{color.cyan}est_tflops: {tflops if tflops is not None else -1:,.2f}  "
+            f"{color.magenta}est_mfu: {mfu if mfu is not None else -1:.2f}%{color.reset}"
         )
 
         self.ntokens_since_last_log = 0

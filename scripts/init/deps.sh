@@ -15,4 +15,4 @@ conda activate $ENV_NAME
 
 pip3 install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu126 --force-reinstall
 
-pip install --no-cache-dir transformers torchdata datasets tiktoken einops
+pip install --no-cache-dir transformers torchdata datasets tiktoken einops zstandard

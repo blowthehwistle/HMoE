@@ -8,6 +8,7 @@ from torch.distributed.checkpoint.state_dict import (
     StateDictOptions,
 )
 from ttp.patches import as_patch
+from ttp.utils.nvtx import nvtx_range
 from typing import Any, TypeVar
 
 
@@ -67,6 +68,10 @@ class OptimizersContainer(torchtitan.components.optimizer.OptimizersContainer):
             options=StateDictOptions(flatten_optimizer_state_dict=False),  # TODO flatten_optimizer_state_dict=True have bug
         )
         list(map(func, self.model_parts, self.optimizers))
+
+    def step(self, *args, **kwargs) -> None:
+        with nvtx_range("train/optimizer_step"):
+            super().step(*args, **kwargs)
 
 
 def do_patch():

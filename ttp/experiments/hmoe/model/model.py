@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.profiler import record_function
+from ttp.utils.nvtx import nvtx_range
 from torchtitan.models.attention import build_attention, init_attention_mask
 from torchtitan.protocols.train_spec import ModelProtocol
 from torchtitan.tools.logging import logger
@@ -357,7 +358,7 @@ class Hybrid(nn.Module, ModelProtocol):
                 label = f"hmoe_attention_block/layer_{i}"
             else:
                 label = f"hmoe_ffn_block/layer_{i}"
-            with record_function(label):
+            with record_function(label), nvtx_range(label):
                 h = layer(h, self.freqs_cis, seq_idx, cache)
 
         h = self.norm(h) if self.norm else h
